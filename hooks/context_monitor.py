@@ -20,6 +20,8 @@ from _util import (
 
 def tokens_to_pct(tokens_used: int, window: int = CONTEXT_WINDOW_TOKENS) -> float:
     compaction_threshold = window - AUTOCOMPACT_BUFFER_TOKENS
+    if compaction_threshold <= 0:
+        return 100.0
     return min(100.0, (tokens_used / compaction_threshold) * 100)
 
 
@@ -27,7 +29,7 @@ def main() -> int:
     hook_data = read_hook_stdin()
     tokens_used = hook_data.get("context_tokens_used", 0)
     if not tokens_used:
-        sys.exit(0)
+        return 0
 
     pct = tokens_to_pct(tokens_used)
 
@@ -44,8 +46,8 @@ def main() -> int:
         )
         print(hook_context(msg))
 
-    sys.exit(0)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

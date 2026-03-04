@@ -1,4 +1,4 @@
-"""Utilitários compartilhados para hooks do devflow."""
+"""Shared utilities for devflow hooks."""
 from __future__ import annotations
 
 import json
@@ -10,15 +10,28 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
 
-# Limites de tamanho de arquivo
+# File length thresholds — beyond 400 lines files become hard to review in a single pass
 FILE_LINES_WARN = 400
 FILE_LINES_CRITICAL = 600
 
-# Threshold de contexto
+# Context thresholds — compaction fires at (WINDOW - BUFFER), so effective limit is ~167k tokens
 CONTEXT_WINDOW_TOKENS = 200_000
 AUTOCOMPACT_BUFFER_TOKENS = 33_000
 CONTEXT_WARN_PCT = 80.0
 CONTEXT_CAUTION_PCT = 90.0
+
+# Shared constants across hooks
+GENERATED_PATTERNS = frozenset({
+    ".g.dart", ".freezed.dart",
+    ".generated.ts", ".generated.js",
+    ".pb.go", ".pb.ts", ".pb.py",
+    ".moc.cpp",
+    ".designer.cs",
+})
+SKIP_DIRS = frozenset({
+    "node_modules", ".git", "__pycache__", ".dart_tool",
+    "build", "dist", "migrations",
+})
 
 
 class ToolchainKind(Enum):
@@ -38,26 +51,36 @@ _TOOLCHAIN_FINGERPRINTS: list[tuple[str, ToolchainKind]] = [
     ("go.mod", ToolchainKind.GO),
 ]
 
+TOOLCHAIN_FINGERPRINT_MAP: dict[ToolchainKind, str] = {
+    ToolchainKind.NODEJS: "package.json",
+    ToolchainKind.FLUTTER: "pubspec.yaml",
+    ToolchainKind.GO: "go.mod",
+    ToolchainKind.RUST: "Cargo.toml",
+    ToolchainKind.MAVEN: "pom.xml",
+}
 
-def detect_toolchain_root(start_dir: Path, max_levels: int = 4) -> Optional[ToolchainKind]:
+
+def detect_toolchain(start_dir: Path, max_levels: int = 4) -> tuple[Optional[ToolchainKind], Optional[Path]]:
+    """Detect toolchain kind and project root by walking up directories."""
     current = start_dir
     for _ in range(max_levels):
         for filename, kind in _TOOLCHAIN_FINGERPRINTS:
             if (current / filename).exists():
-                return kind
+                return kind, current
         parent = current.parent
         if parent == current:
             break
         current = parent
-    return None
+    return None, None
 
 
-def check_file_length(file_path: Path) -> tuple[bool, bool]:
+def check_file_length(file_path: Path) -> tuple[bool, bool, int]:
+    """Returns (warn, critical, line_count)."""
     try:
         lines = len(file_path.read_text(encoding="utf-8", errors="ignore").splitlines())
     except OSError:
-        return False, False
-    return lines > FILE_LINES_WARN, lines > FILE_LINES_CRITICAL
+        return False, False, 0
+    return lines > FILE_LINES_WARN, lines > FILE_LINES_CRITICAL, lines
 
 
 def read_hook_stdin() -> dict:
@@ -65,8 +88,10 @@ def read_hook_stdin() -> dict:
         content = sys.stdin.read()
         if content.strip():
             return json.loads(content)
-    except (json.JSONDecodeError, OSError):
-        pass
+    except json.JSONDecodeError as e:
+        print(f"[devflow] WARNING: invalid JSON on stdin: {e}", file=sys.stderr)
+    except OSError as e:
+        print(f"[devflow] WARNING: stdin read error: {e}", file=sys.stderr)
     return {}
 
 
@@ -97,18 +122,15 @@ def run_command(cmd: list[str], cwd: Optional[Path] = None, timeout: int = 30) -
         return 1, f"timeout após {timeout}s"
     except FileNotFoundError:
         return 127, f"comando não encontrado: {cmd[0]}"
-    except Exception as e:
-        return 1, str(e)
+    except OSError as e:
+        return 1, f"{type(e).__name__}: {e}"
 
 
-def which(cmd: str) -> Optional[str]:
-    return shutil.which(cmd)
-
-
-def hook_context(context: str) -> str:
+def hook_context(context: str, event_name: str = "PostToolUse") -> str:
+    """Format context output for hook system. Parameterized event name."""
     return json.dumps({
         "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
+            "hookEventName": event_name,
             "additionalContext": context,
         }
     })
@@ -120,7 +142,3 @@ def hook_block(reason: str) -> str:
 
 def hook_deny(reason: str) -> str:
     return json.dumps({"permissionDecision": "deny", "reason": reason})
-
-
-def hook_stop_block(reason: str) -> str:
-    return json.dumps({"decision": "block", "reason": reason})

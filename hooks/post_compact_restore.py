@@ -1,6 +1,7 @@
 """
 SessionStart(compact) hook — restaura contexto apos compaction.
 Le estado salvo pelo pre_compact.py e injeta no contexto via stdout.
+Output protocol: plain text lines to stdout (SessionStart hooks use text, not JSON).
 """
 from __future__ import annotations
 
@@ -17,12 +18,16 @@ def main() -> int:
     state_file = state_dir / "pre-compact.json"
 
     if not state_file.exists():
-        sys.exit(0)
+        return 0
 
     try:
         state = json.loads(state_file.read_text())
-    except (json.JSONDecodeError, OSError):
-        sys.exit(0)
+    except json.JSONDecodeError as e:
+        print(f"[devflow] WARNING: corrupt pre-compact state, cannot restore: {e}", file=sys.stderr)
+        return 0
+    except OSError as e:
+        print(f"[devflow] WARNING: cannot read pre-compact state: {e}", file=sys.stderr)
+        return 0
 
     lines = ["[devflow Context Restored After Compaction]"]
 
@@ -41,8 +46,8 @@ def main() -> int:
 
     try:
         state_file.unlink()
-    except OSError:
-        pass
+    except OSError as e:
+        print(f"[devflow] WARNING: could not remove state file {state_file}: {e}", file=sys.stderr)
 
     print("\n".join(lines))
     return 0

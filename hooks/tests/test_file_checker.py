@@ -25,10 +25,21 @@ def test_skip_generated_files():
     assert should_skip(Path("src/widget.moc.cpp"))
 
 
+def test_skip_dirs():
+    assert should_skip(Path("node_modules/pkg/index.js"))
+    assert should_skip(Path("build/output.js"))
+    assert should_skip(Path(".git/hooks/pre-commit"))
+
+
 def test_no_skip_impl_files():
     assert not should_skip(Path("src/user.py"))
     assert not should_skip(Path("lib/api.ts"))
     assert not should_skip(Path("internal/server.go"))
+
+
+def test_case_insensitive_skip():
+    assert should_skip(Path("src/USER.G.DART"))
+    assert should_skip(Path("DOCKERFILE"))
 
 
 def test_length_message_warn(tmp_path):
@@ -50,4 +61,9 @@ def test_length_message_ok(tmp_path):
     f = tmp_path / "small.py"
     f.write_text("x\n" * 50)
     msg = get_length_message(f)
+    assert msg == ""
+
+
+def test_length_message_missing():
+    msg = get_length_message(Path("/nonexistent/file.py"))
     assert msg == ""

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _util import get_edited_file, hook_context, read_hook_stdin
+from _util import GENERATED_PATTERNS, SKIP_DIRS, get_edited_file, hook_context, read_hook_stdin
 
 _TEST_PATTERNS = {
     "test_", "_test.", ".test.", "_spec.", ".spec.",
@@ -19,11 +19,6 @@ _IMPL_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".dart", ".kt", 
 _SKIP_NAMES = {
     "setup.py", "conftest.py", "manage.py", "wsgi.py", "asgi.py",
     "main.dart", "app.ts", "index.ts", "index.js",
-}
-_SKIP_DIRS = {"node_modules", ".git", "__pycache__", "build", "dist", ".dart_tool", "migrations"}
-_GENERATED_PATTERNS = {
-    ".g.dart", ".freezed.dart", ".generated.ts", ".generated.js",
-    ".pb.go", ".pb.ts", ".pb.py", ".moc.cpp", ".designer.cs",
 }
 
 
@@ -38,10 +33,10 @@ def is_impl_file(path: Path) -> bool:
     if path.name in _SKIP_NAMES:
         return False
     name = path.name.lower()
-    if any(name.endswith(p) for p in _GENERATED_PATTERNS):
+    if any(name.endswith(p) for p in GENERATED_PATTERNS):
         return False
     for part in path.parts:
-        if part in _SKIP_DIRS:
+        if part in SKIP_DIRS:
             return False
     return True
 
@@ -100,10 +95,10 @@ def main() -> int:
     file_path = get_edited_file(hook_data)
 
     if not file_path or not file_path.exists():
-        sys.exit(0)
+        return 0
 
     if is_test_file(file_path) or not is_impl_file(file_path):
-        sys.exit(0)
+        return 0
 
     has_test = find_test_file(file_path)
     if not has_test:
@@ -115,8 +110,8 @@ def main() -> int:
         )
         print(hook_context(context))
 
-    sys.exit(0)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
