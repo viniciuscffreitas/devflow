@@ -1,0 +1,122 @@
+"""
+PostToolUse hook (Write|Edit|MultiEdit) — avisa sobre implementacao sem testes.
+Non-blocking: nunca bloqueia, apenas avisa com sugestao de caminho do teste.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from _util import get_edited_file, hook_context, read_hook_stdin
+
+_TEST_PATTERNS = {
+    "test_", "_test.", ".test.", "_spec.", ".spec.",
+    "tests/", "/test/", "/tests/", "__tests__/",
+    "conftest.", "fixture", "mock",
+}
+_IMPL_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".dart", ".kt", ".swift"}
+_SKIP_NAMES = {
+    "setup.py", "conftest.py", "manage.py", "wsgi.py", "asgi.py",
+    "main.dart", "app.ts", "index.ts", "index.js",
+}
+_SKIP_DIRS = {"node_modules", ".git", "__pycache__", "build", "dist", ".dart_tool", "migrations"}
+_GENERATED_PATTERNS = {
+    ".g.dart", ".freezed.dart", ".generated.ts", ".generated.js",
+    ".pb.go", ".pb.ts", ".pb.py", ".moc.cpp", ".designer.cs",
+}
+
+
+def is_test_file(path: Path) -> bool:
+    str_path = str(path).lower()
+    return any(pattern in str_path for pattern in _TEST_PATTERNS)
+
+
+def is_impl_file(path: Path) -> bool:
+    if path.suffix not in _IMPL_EXTENSIONS:
+        return False
+    if path.name in _SKIP_NAMES:
+        return False
+    name = path.name.lower()
+    if any(name.endswith(p) for p in _GENERATED_PATTERNS):
+        return False
+    for part in path.parts:
+        if part in _SKIP_DIRS:
+            return False
+    return True
+
+
+def suggest_test_path(impl_path: Path) -> str:
+    stem = impl_path.stem
+    ext = impl_path.suffix
+    parts = list(impl_path.parts)
+
+    impl_dirs = {"lib", "src", "internal", "pkg", "app"}
+    test_dirs = {"lib": "test", "src": "tests", "internal": "tests", "pkg": "tests", "app": "tests"}
+    test_suffixes = {
+        ".dart": f"{stem}_test{ext}",
+        ".py": f"test_{stem}{ext}",
+        ".go": f"{stem}_test{ext}",
+        ".ts": f"{stem}.test{ext}",
+        ".tsx": f"{stem}.test{ext}",
+        ".js": f"{stem}.test{ext}",
+        ".jsx": f"{stem}.test{ext}",
+        ".kt": f"{stem}Test{ext}",
+        ".swift": f"{stem}Tests{ext}",
+    }
+
+    test_filename = test_suffixes.get(ext, f"test_{stem}{ext}")
+
+    for i, part in enumerate(parts):
+        if part in impl_dirs:
+            mirrored = list(parts)
+            mirrored[i] = test_dirs.get(part, "tests")
+            mirrored[-1] = test_filename
+            return str(Path(*mirrored))
+
+    return str(impl_path.parent / test_filename)
+
+
+def find_test_file(impl_path: Path) -> bool:
+    stem = impl_path.stem
+    root = impl_path.parent
+    for _ in range(3):
+        for test_dir in ["tests", "test", "__tests__"]:
+            td = root / test_dir
+            if td.is_dir():
+                for f in td.rglob(f"*{stem}*"):
+                    if is_test_file(f):
+                        return True
+        for pattern in [f"test_{stem}", f"{stem}_test", f"{stem}.test", f"{stem}.spec"]:
+            for ext in _IMPL_EXTENSIONS:
+                if (root / f"{pattern}{ext}").exists():
+                    return True
+        root = root.parent
+    return False
+
+
+def main() -> int:
+    hook_data = read_hook_stdin()
+    file_path = get_edited_file(hook_data)
+
+    if not file_path or not file_path.exists():
+        sys.exit(0)
+
+    if is_test_file(file_path) or not is_impl_file(file_path):
+        sys.exit(0)
+
+    has_test = find_test_file(file_path)
+    if not has_test:
+        suggested = suggest_test_path(file_path)
+        context = (
+            f"[devflow TDD] {file_path.name}: implementacao sem teste correspondente.\n"
+            f"Sugestao: crie `{suggested}`\n"
+            f"TDD: RED -> GREEN -> REFACTOR"
+        )
+        print(hook_context(context))
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
