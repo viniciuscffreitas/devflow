@@ -1,6 +1,7 @@
 """
 SessionStart(compact) hook — restaura contexto apos compaction.
 Le estado salvo pelo pre_compact.py e injeta no contexto via stdout.
+Inclui project profile para continuidade imediata.
 Output protocol: plain text lines to stdout (SessionStart hooks use text, not JSON).
 """
 from __future__ import annotations
@@ -43,6 +44,17 @@ def main() -> int:
     cwd = state.get("cwd")
     if cwd:
         lines.append(f"Working directory: {cwd}")
+
+    profile = state.get("project_profile")
+    if profile:
+        lines.append(f"ISSUE_TRACKER_TYPE={profile.get('issue_tracker', 'none')}")
+        ds = profile.get("design_system")
+        if ds:
+            lines.append(f"DESIGN_SYSTEM_ROOT={ds}")
+        lines.append(f"TEST_FRAMEWORK={profile.get('test_framework', 'unknown')}")
+        lines.append(f"TOOLCHAIN={profile.get('toolchain', 'unknown')}")
+        injected = profile.get("injected_skills", [])
+        lines.append(f"LEARNED_SKILLS={','.join(injected) if injected else 'none'}")
 
     try:
         state_file.unlink()

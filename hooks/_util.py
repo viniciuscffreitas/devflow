@@ -10,9 +10,11 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
 
-# File length thresholds — beyond 400 lines files become hard to review in a single pass
+# Default file length thresholds — overridable via devflow-config.json
 FILE_LINES_WARN = 400
 FILE_LINES_CRITICAL = 600
+
+DEVFLOW_CONFIG_GLOBAL = Path.home() / ".claude" / "devflow" / "devflow-config.json"
 
 # Context thresholds — compaction fires at (WINDOW - BUFFER), so effective limit is ~167k tokens
 CONTEXT_WINDOW_TOKENS = 200_000
@@ -74,13 +76,17 @@ def detect_toolchain(start_dir: Path, max_levels: int = 4) -> tuple[Optional[Too
     return None, None
 
 
-def check_file_length(file_path: Path) -> tuple[bool, bool, int]:
-    """Returns (warn, critical, line_count)."""
+def check_file_length(
+    file_path: Path,
+    warn: int = FILE_LINES_WARN,
+    critical: int = FILE_LINES_CRITICAL,
+) -> tuple[bool, bool, int]:
+    """Returns (warn, critical, line_count). Limits are configurable."""
     try:
         lines = len(file_path.read_text(encoding="utf-8", errors="ignore").splitlines())
     except OSError:
         return False, False, 0
-    return lines > FILE_LINES_WARN, lines > FILE_LINES_CRITICAL, lines
+    return lines > warn, lines > critical, lines
 
 
 def read_hook_stdin() -> dict:
@@ -142,3 +148,33 @@ def hook_block(reason: str) -> str:
 
 def hook_deny(reason: str) -> str:
     return json.dumps({"permissionDecision": "deny", "reason": reason})
+
+
+def load_devflow_config(project_root: Optional[Path] = None) -> dict:
+    """Load devflow config with project-level override.
+
+    Resolution order: defaults -> global -> project (.devflow-config.json).
+    """
+    defaults = {
+        "file_length_warn": FILE_LINES_WARN,
+        "file_length_critical": FILE_LINES_CRITICAL,
+        "learned_skills_auto_inject": True,
+        "issue_tracker_override": None,
+    }
+    config = dict(defaults)
+
+    if DEVFLOW_CONFIG_GLOBAL.exists():
+        try:
+            config.update(json.loads(DEVFLOW_CONFIG_GLOBAL.read_text()))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if project_root:
+        project_config = project_root / ".devflow-config.json"
+        if project_config.exists():
+            try:
+                config.update(json.loads(project_config.read_text()))
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    return config

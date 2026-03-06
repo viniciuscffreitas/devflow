@@ -1,6 +1,6 @@
 """
 PreCompact hook — salva estado antes do auto-compaction.
-Captura: session ID, trigger, spec ativa, e diretorio de trabalho.
+Captura: session ID, trigger, spec ativa, diretorio de trabalho, e project profile.
 """
 from __future__ import annotations
 
@@ -35,6 +35,17 @@ def _find_active_spec() -> dict | None:
     return None
 
 
+def _load_project_profile() -> dict | None:
+    state_dir = get_state_dir()
+    profile_path = state_dir / "project-profile.json"
+    if profile_path.exists():
+        try:
+            return json.loads(profile_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    return None
+
+
 def main() -> int:
     hook_data = read_hook_stdin()
     state_dir = get_state_dir()
@@ -44,6 +55,7 @@ def main() -> int:
         "trigger": hook_data.get("trigger", "auto"),
         "active_spec": _find_active_spec(),
         "cwd": os.getcwd(),
+        "project_profile": _load_project_profile(),
     }
 
     state_file = state_dir / "pre-compact.json"

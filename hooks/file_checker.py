@@ -17,10 +17,9 @@ from _util import (
     detect_toolchain,
     get_edited_file,
     hook_context,
+    load_devflow_config,
     read_hook_stdin,
     run_command,
-    FILE_LINES_WARN,
-    FILE_LINES_CRITICAL,
 )
 
 _SKIP_PATTERNS = {
@@ -48,18 +47,20 @@ def should_skip(file_path: Path) -> bool:
     return False
 
 
-def get_length_message(file_path: Path) -> str:
-    warn, critical, lines = check_file_length(file_path)
+def get_length_message(file_path: Path, config: dict) -> str:
+    warn_limit = config.get("file_length_warn", 400)
+    critical_limit = config.get("file_length_critical", 600)
+    warn, critical, lines = check_file_length(file_path, warn_limit, critical_limit)
     if not warn and not critical:
         return ""
     if critical:
         return (
             f"FILE TOO LONG: {file_path.name} tem {lines} linhas "
-            f"(critico: {FILE_LINES_CRITICAL}). Split obrigatorio em modulos menores."
+            f"(critico: {critical_limit}). Split obrigatorio em modulos menores."
         )
     return (
         f"FILE GROWING: {file_path.name} tem {lines} linhas "
-        f"(aviso: {FILE_LINES_WARN}). Considere dividir."
+        f"(aviso: {warn_limit}). Considere dividir."
     )
 
 
@@ -141,7 +142,8 @@ def main() -> int:
         return 0
 
     toolchain, project_root = detect_toolchain(file_path.parent)
-    length_msg = get_length_message(file_path)
+    config = load_devflow_config(project_root)
+    length_msg = get_length_message(file_path, config)
 
     issues: list[str] = []
 
