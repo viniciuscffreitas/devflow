@@ -45,8 +45,10 @@ def main() -> int:
     if cwd:
         lines.append(f"Working directory: {cwd}")
 
+    # Only emit profile if discovery_scan hasn't already run in this session
+    discovery_marker = state_dir / "discovery-ran"
     profile = state.get("project_profile")
-    if profile:
+    if profile and not discovery_marker.exists():
         lines.append(f"ISSUE_TRACKER_TYPE={profile.get('issue_tracker', 'none')}")
         ds = profile.get("design_system")
         if ds:

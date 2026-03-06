@@ -249,6 +249,7 @@ def main() -> int:
         (state_dir / "project-profile.json").write_text(
             json.dumps(profile, indent=2),
         )
+        (state_dir / "discovery-ran").write_text("")
     except OSError:
         pass
 
