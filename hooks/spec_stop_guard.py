@@ -1,5 +1,6 @@
 """
 Stop hook — bloqueia encerramento se spec ativa esta IMPLEMENTING, PENDING ou in_progress.
+Also cleans up the discovery-ran marker so no future session inherits stale state.
 """
 from __future__ import annotations
 
@@ -28,6 +29,15 @@ def _has_active_spec() -> tuple[bool, str]:
     return False, ""
 
 
+def _cleanup_discovery_marker() -> None:
+    state_dir = get_state_dir()
+    marker = state_dir / "discovery-ran"
+    try:
+        marker.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def main() -> int:
     active, description = _has_active_spec()
     if active:
@@ -37,6 +47,8 @@ def main() -> int:
             f"Apos /pause, o encerramento sera liberado."
         )
         print(hook_block(reason))
+
+    _cleanup_discovery_marker()
     return 0
 
 

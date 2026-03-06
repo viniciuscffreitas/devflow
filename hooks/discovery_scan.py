@@ -245,11 +245,20 @@ def main() -> int:
     }
 
     state_dir = get_state_dir()
+    marker = state_dir / "discovery-ran"
+
+    # Always remove stale marker first — if we crash before the end,
+    # post_compact_restore will correctly inject the profile as fallback.
+    try:
+        marker.unlink(missing_ok=True)
+    except OSError:
+        pass
+
     try:
         (state_dir / "project-profile.json").write_text(
             json.dumps(profile, indent=2),
         )
-        (state_dir / "discovery-ran").write_text("")
+        marker.write_text("")
     except OSError:
         pass
 
