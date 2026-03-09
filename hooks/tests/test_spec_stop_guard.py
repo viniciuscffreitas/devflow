@@ -1,5 +1,7 @@
 import json
+import os
 import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -77,3 +79,37 @@ def test_corrupt_json_fails_closed(tmp_path):
         active, desc = _has_active_spec()
     assert active
     assert "corrupt" in desc
+
+
+def test_expired_spec_not_active(tmp_path):
+    """Spec older than 24h should not block exit."""
+    state_dir = _make_state_dir(tmp_path)
+    old_time = time.time() - (25 * 60 * 60)  # 25 hours ago
+    spec = {"status": "IMPLEMENTING", "plan_path": "/plans/old.md", "started_at": old_time}
+    (state_dir / "active-spec.json").write_text(json.dumps(spec))
+    with patch("spec_stop_guard.get_state_dir", return_value=state_dir):
+        active, desc = _has_active_spec()
+    assert not active
+
+
+def test_recent_spec_still_active(tmp_path):
+    """Spec younger than 24h should still block."""
+    state_dir = _make_state_dir(tmp_path)
+    recent_time = time.time() - (2 * 60 * 60)  # 2 hours ago
+    spec = {"status": "IMPLEMENTING", "plan_path": "/plans/wip.md", "started_at": recent_time}
+    (state_dir / "active-spec.json").write_text(json.dumps(spec))
+    with patch("spec_stop_guard.get_state_dir", return_value=state_dir):
+        active, desc = _has_active_spec()
+    assert active
+
+
+def test_corrupt_json_old_file_not_active(tmp_path):
+    """Corrupt file older than 24h should NOT block (fail-safe)."""
+    state_dir = _make_state_dir(tmp_path)
+    spec_file = state_dir / "active-spec.json"
+    spec_file.write_text("{invalid json!!!")
+    old_time = time.time() - (25 * 60 * 60)
+    os.utime(spec_file, (old_time, old_time))
+    with patch("spec_stop_guard.get_state_dir", return_value=state_dir):
+        active, desc = _has_active_spec()
+    assert not active

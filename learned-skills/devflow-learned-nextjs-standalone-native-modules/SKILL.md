@@ -1,48 +1,48 @@
-# Next.js Standalone + Native Node Modules (better-sqlite3, gamedig) no Docker
+# Next.js Standalone + Native Node Modules (better-sqlite3, gamedig) in Docker
 
 ## Trigger
 
-Use quando:
-- Build Docker falha com `Error loading shared library ld-linux-x86-64.so.2` (Alpine + glibc binaries)
-- `Failed to collect page data for /api/...` durante `npm run build` no Alpine
-- `gamedig`, `better-sqlite3`, ou outros módulos com binários nativos não funcionam em container
-- Next.js standalone não inclui módulos com dependências transitivas complexas (gamedig, got, etc.)
+Use when:
+- Docker build fails with `Error loading shared library ld-linux-x86-64.so.2` (Alpine + glibc binaries)
+- `Failed to collect page data for /api/...` during `npm run build` on Alpine
+- `gamedig`, `better-sqlite3`, or other modules with native binaries don't work in container
+- Next.js standalone doesn't include modules with complex transitive dependencies (gamedig, got, etc.)
 
-## Problema 1: Alpine vs glibc
+## Problem 1: Alpine vs glibc
 
-`node:alpine` usa **musl libc**. Pacotes como `better-sqlite3` e `gamedig` distribuem binários pré-compilados para **glibc** (Linux padrão). Isso causa erro em runtime no Alpine.
+`node:alpine` uses **musl libc**. Packages like `better-sqlite3` and `gamedig` distribute pre-compiled binaries for **glibc** (standard Linux). This causes runtime errors on Alpine.
 
-**Fix: Trocar a imagem base**
+**Fix: Switch the base image**
 
 ```dockerfile
-# ANTES (quebra com glibc binaries)
+# BEFORE (breaks with glibc binaries)
 FROM node:22-alpine AS builder
 FROM node:22-alpine AS runner
 
-# DEPOIS (Debian slim = glibc nativo)
+# AFTER (Debian slim = native glibc)
 FROM node:22-slim AS builder
 FROM node:22-slim AS runner
 ```
 
-## Problema 2: Next.js build faz import de rotas com native modules
+## Problem 2: Next.js build imports routes with native modules
 
-Mesmo rotas POST-only são "inspecionadas" pelo Next.js durante o build. Se a rota importa (transitivamente) `better-sqlite3` ou qualquer `.node` nativo, o build falha.
+Even POST-only routes are "inspected" by Next.js during build. If the route imports (transitively) `better-sqlite3` or any native `.node` module, the build fails.
 
-**Fix: `force-dynamic` em TODAS as rotas que importam o DB (mesmo indiretamente)**
+**Fix: `force-dynamic` on ALL routes that import the DB (even indirectly)**
 
 ```typescript
-// app/api/vip/webhook/route.ts — importa vip-service → db → better-sqlite3
+// app/api/vip/webhook/route.ts — imports vip-service → db → better-sqlite3
 export const dynamic = 'force-dynamic'
 
-// app/api/vip/status/route.ts — importa db diretamente
+// app/api/vip/status/route.ts — imports db directly
 export const dynamic = 'force-dynamic'
 ```
 
-## Problema 3: Next.js standalone não inclui deps transitivas de pacotes complexos
+## Problem 3: Next.js standalone doesn't include transitive deps of complex packages
 
-`gamedig` depende de `got`, `long`, `fast-xml-parser`, etc. O file tracing do Next.js não rastreia todas essas dependências automaticamente.
+`gamedig` depends on `got`, `long`, `fast-xml-parser`, etc. Next.js file tracing doesn't track all these dependencies automatically.
 
-**Fix: Copiar node_modules completo no Dockerfile**
+**Fix: Copy full node_modules in the Dockerfile**
 
 ```dockerfile
 FROM node:22-slim AS builder
@@ -58,13 +58,13 @@ ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-# gamedig e deps transitivas não são auto-rastreadas pelo standalone
+# gamedig and transitive deps are not auto-traced by standalone
 COPY --from=builder /app/node_modules ./node_modules
 EXPOSE 3000
 CMD ["node", "server.js"]
 ```
 
-**E no next.config.ts — marcar como external para não tentar bundlar:**
+**And in next.config.ts — mark as external to prevent bundling:**
 
 ```typescript
 const nextConfig: NextConfig = {
@@ -73,15 +73,15 @@ const nextConfig: NextConfig = {
 }
 ```
 
-## Diagnóstico Rápido
+## Quick Diagnosis
 
 ```bash
-# Verificar se módulo está no container
+# Check if module is in the container
 docker exec <container> ls node_modules | grep gamedig
 
-# Testar import do módulo
+# Test module import
 docker exec <container> node -e "require('gamedig'); console.log('ok')"
 
-# Ver erro real de build
+# See actual build error
 docker compose build 2>&1 | grep -E 'Error|Failed|error' | grep -v node_modules
 ```

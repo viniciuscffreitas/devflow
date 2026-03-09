@@ -131,7 +131,7 @@ def test_run_command_success():
 def test_run_command_not_found():
     code, msg = run_command(["nonexistent_binary_xyz_12345"])
     assert code == 127
-    assert "não encontrado" in msg or "not found" in msg.lower()
+    assert "not found" in msg.lower()
 
 
 def test_run_command_timeout():

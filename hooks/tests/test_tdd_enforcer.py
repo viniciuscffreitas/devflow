@@ -123,3 +123,29 @@ def test_find_test_file_not_found(tmp_path):
     impl = tmp_path / "lonely.py"
     impl.write_text("def lonely(): pass")
     assert not find_test_file(impl)
+
+
+def test_find_test_file_deep_nested(tmp_path):
+    """Test finds tests 4+ levels up."""
+    impl_dir = tmp_path / "src" / "features" / "auth" / "login"
+    impl_dir.mkdir(parents=True)
+    impl = impl_dir / "service.py"
+    impl.write_text("class Service: pass")
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    test_file = tests_dir / "test_service.py"
+    test_file.write_text("def test_service(): pass")
+    assert find_test_file(impl)
+
+
+def test_find_test_file_monorepo(tmp_path):
+    """Test finds tests in monorepo packages/*/test layout."""
+    pkg_src = tmp_path / "packages" / "auth" / "src"
+    pkg_src.mkdir(parents=True)
+    impl = pkg_src / "handler.py"
+    impl.write_text("def handle(): pass")
+    test_dir = tmp_path / "packages" / "auth" / "test"
+    test_dir.mkdir(parents=True)
+    test_file = test_dir / "test_handler.py"
+    test_file.write_text("def test_handle(): pass")
+    assert find_test_file(impl)

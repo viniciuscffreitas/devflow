@@ -1,6 +1,5 @@
-"""
-PostToolUse hook (broad matcher) — monitora uso do contexto.
-Avisa em ~80% e ~90%. Non-blocking.
+"""PostToolUse hook (broad matcher) — monitors context window usage.
+Warns at ~80% and ~90%. Non-blocking.
 """
 from __future__ import annotations
 
@@ -35,14 +34,14 @@ def main() -> int:
 
     if pct >= CONTEXT_CAUTION_PCT:
         msg = (
-            f"[devflow] Contexto em {pct:.0f}% — "
-            f"Conclua a tarefa atual. Auto-compaction sera disparado em breve."
+            f"[devflow] Context at {pct:.0f}% — "
+            f"Wrap up your current task. Auto-compaction will trigger soon."
         )
         print(hook_context(msg))
     elif pct >= CONTEXT_WARN_PCT:
         msg = (
-            f"[devflow] Contexto em {pct:.0f}% — "
-            f"Considere usar /learn para capturar descobertas importantes."
+            f"[devflow] Context at {pct:.0f}% — "
+            f"Consider using /learn to capture important discoveries."
         )
         print(hook_context(msg))
 

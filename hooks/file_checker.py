@@ -1,6 +1,6 @@
 """
-PostToolUse hook (Write|Edit|MultiEdit) — quality checker agnóstico de linguagem.
-Detecta toolchain, roda format+lint, avisa sobre tamanho de arquivo.
+PostToolUse hook (Write|Edit|MultiEdit) — language-agnostic quality checker.
+Detects toolchain, runs format+lint, warns about file size.
 """
 from __future__ import annotations
 
@@ -55,12 +55,12 @@ def get_length_message(file_path: Path, config: dict) -> str:
         return ""
     if critical:
         return (
-            f"FILE TOO LONG: {file_path.name} tem {lines} linhas "
-            f"(critico: {critical_limit}). Split obrigatorio em modulos menores."
+            f"FILE TOO LONG: {file_path.name} has {lines} lines "
+            f"(critical: {critical_limit}). Must split into smaller modules."
         )
     return (
-        f"FILE GROWING: {file_path.name} tem {lines} linhas "
-        f"(aviso: {warn_limit}). Considere dividir."
+        f"FILE GROWING: {file_path.name} has {lines} lines "
+        f"(warn: {warn_limit}). Consider splitting."
     )
 
 
@@ -123,11 +123,27 @@ def _check_rust(file_path: Path, project_root: Path) -> list[str]:
     return issues
 
 
+def _check_maven(file_path: Path, project_root: Path) -> list[str]:
+    issues = []
+    mvnw = project_root / "mvnw"
+    mvn_cmd = str(mvnw) if mvnw.exists() else shutil.which("mvn")
+    if not mvn_cmd:
+        return issues
+    if file_path.suffix == ".java":
+        code, output = run_command([mvn_cmd, "compile", "-q"], cwd=project_root, timeout=60)
+        if code != 0 and output:
+            lines = [l for l in output.splitlines() if "ERROR" in l or "[ERROR]" in l][:5]
+            if lines:
+                issues.append("Maven compile: " + "\n".join(lines))
+    return issues
+
+
 _CHECKERS = {
     ToolchainKind.NODEJS: _check_nodejs,
     ToolchainKind.FLUTTER: _check_flutter,
     ToolchainKind.GO: _check_go,
     ToolchainKind.RUST: _check_rust,
+    ToolchainKind.MAVEN: _check_maven,
 }
 
 

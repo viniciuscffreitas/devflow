@@ -125,9 +125,9 @@ def run_command(cmd: list[str], cwd: Optional[Path] = None, timeout: int = 30) -
         )
         return result.returncode, (result.stdout + result.stderr).strip()
     except subprocess.TimeoutExpired:
-        return 1, f"timeout após {timeout}s"
+        return 1, f"timeout after {timeout}s"
     except FileNotFoundError:
-        return 127, f"comando não encontrado: {cmd[0]}"
+        return 127, f"command not found: {cmd[0]}"
     except OSError as e:
         return 1, f"{type(e).__name__}: {e}"
 

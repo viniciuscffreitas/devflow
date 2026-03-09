@@ -1,6 +1,5 @@
-"""
-PreCompact hook — salva estado antes do auto-compaction.
-Captura: session ID, trigger, spec ativa, diretorio de trabalho, e project profile.
+"""PreCompact hook — saves state before auto-compaction.
+Captures: session ID, trigger, active spec, working directory, and project profile.
 """
 from __future__ import annotations
 
@@ -65,7 +64,7 @@ def main() -> int:
         print(f"[devflow] ERROR: could not save pre-compact state: {e}", file=sys.stderr)
         return 1
 
-    print("[devflow] Estado salvo antes da compaction", file=sys.stderr)
+    print("[devflow] State saved before compaction", file=sys.stderr)
     return 0
 
 

@@ -216,6 +216,17 @@ def _manage_symlinks(
     return injected
 
 
+def _count_all_learned_skills() -> list[str]:
+    """Return names of ALL installed learned skills (permanent + injected)."""
+    installed = []
+    if not SKILLS_DIR.is_dir():
+        return installed
+    for entry in SKILLS_DIR.iterdir():
+        if entry.name.startswith("devflow-learned-") and entry.is_dir():
+            installed.append(entry.name)
+    return sorted(installed)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -226,6 +237,10 @@ def main() -> int:
     settings = _load_settings()
 
     toolchain, _ = detect_toolchain(project_root)
+    in_project = (project_root != cwd) or any(
+        (cwd / marker).exists()
+        for marker in [".git", "package.json", "pubspec.yaml", "Cargo.toml", "go.mod", "pom.xml"]
+    )
     config = load_devflow_config(project_root)
 
     issue_tracker = detect_issue_tracker(project_root, settings, config)
@@ -235,13 +250,18 @@ def main() -> int:
     _ensure_learned_skills_dir()
     injected = _manage_symlinks(project_root, cwd, toolchain, config)
 
+    tf_label = test_framework if in_project else "none"
+    all_learned = _count_all_learned_skills()
+
     profile = {
         "project_root": str(project_root),
-        "toolchain": toolchain.name if toolchain else "unknown",
+        "toolchain": toolchain.name if toolchain else (None if not in_project else "unknown"),
         "issue_tracker": issue_tracker,
         "design_system": design_system,
-        "test_framework": test_framework,
+        "test_framework": tf_label,
         "injected_skills": injected,
+        "all_learned_skills": all_learned,
+        "in_project": in_project,
     }
 
     state_dir = get_state_dir()
@@ -266,10 +286,14 @@ def main() -> int:
     lines.append(f"ISSUE_TRACKER_TYPE={issue_tracker}")
     if design_system:
         lines.append(f"DESIGN_SYSTEM_ROOT={design_system}")
-    lines.append(f"TEST_FRAMEWORK={test_framework}")
-    lines.append(f"TOOLCHAIN={toolchain.name if toolchain else 'unknown'}")
-    if injected:
-        lines.append(f"LEARNED_SKILLS={','.join(injected)}")
+    lines.append(f"TEST_FRAMEWORK={tf_label}")
+    tc_label = toolchain.name if toolchain else ("none" if not in_project else "unknown")
+    lines.append(f"TOOLCHAIN={tc_label}")
+    if not in_project:
+        lines.append("PROJECT=none (not in a project directory)")
+
+    if all_learned:
+        lines.append(f"LEARNED_SKILLS={','.join(all_learned)}")
     else:
         lines.append("LEARNED_SKILLS=none")
 

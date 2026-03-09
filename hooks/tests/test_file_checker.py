@@ -2,7 +2,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from file_checker import should_skip, get_length_message
+from file_checker import should_skip, get_length_message, _check_maven
+import shutil
 
 
 def test_skip_test_files():
@@ -45,7 +46,7 @@ def test_case_insensitive_skip():
 def test_length_message_warn(tmp_path):
     f = tmp_path / "big.py"
     f.write_text("\n".join(["x"] * 450))
-    msg = get_length_message(f)
+    msg = get_length_message(f, {})
     assert "GROWING" in msg
     assert "450" in msg
 
@@ -53,17 +54,26 @@ def test_length_message_warn(tmp_path):
 def test_length_message_critical(tmp_path):
     f = tmp_path / "huge.py"
     f.write_text("\n".join(["x"] * 650))
-    msg = get_length_message(f)
+    msg = get_length_message(f, {})
     assert "TOO LONG" in msg
 
 
 def test_length_message_ok(tmp_path):
     f = tmp_path / "small.py"
     f.write_text("x\n" * 50)
-    msg = get_length_message(f)
+    msg = get_length_message(f, {})
     assert msg == ""
 
 
 def test_length_message_missing():
-    msg = get_length_message(Path("/nonexistent/file.py"))
+    msg = get_length_message(Path("/nonexistent/file.py"), {})
     assert msg == ""
+
+
+def test_maven_checker_no_mvn(tmp_path, monkeypatch):
+    """When neither mvnw nor mvn exist, returns no issues."""
+    monkeypatch.setattr(shutil, "which", lambda x: None)
+    f = tmp_path / "App.java"
+    f.write_text("public class App {}")
+    issues = _check_maven(f, tmp_path)
+    assert issues == []

@@ -1,6 +1,6 @@
 """
-PostToolUse hook (Write|Edit|MultiEdit) — avisa sobre implementacao sem testes.
-Non-blocking: nunca bloqueia, apenas avisa com sugestao de caminho do teste.
+PostToolUse hook (Write|Edit|MultiEdit) — warns about implementation without tests.
+Non-blocking: never blocks, only advises with suggested test path.
 """
 from __future__ import annotations
 
@@ -72,21 +72,44 @@ def suggest_test_path(impl_path: Path) -> str:
     return str(impl_path.parent / test_filename)
 
 
-def find_test_file(impl_path: Path) -> bool:
+def find_test_file(impl_path: Path, max_depth: int = 5) -> bool:
     stem = impl_path.stem
     root = impl_path.parent
-    for _ in range(3):
-        for test_dir in ["tests", "test", "__tests__"]:
+
+    test_dir_names = ["tests", "test", "__tests__"]
+    monorepo_patterns = ["packages/*/test", "packages/*/tests", "apps/*/test", "apps/*/tests"]
+
+    for _ in range(max_depth):
+        # Check standard test dirs with targeted glob (not rglob)
+        for test_dir in test_dir_names:
             td = root / test_dir
             if td.is_dir():
-                for f in td.rglob(f"*{stem}*"):
-                    if is_test_file(f):
+                for pattern in [
+                    f"test_{stem}.*", f"{stem}_test.*", f"{stem}.test.*", f"{stem}.spec.*",
+                    f"**/test_{stem}.*", f"**/{stem}_test.*", f"**/{stem}.test.*",
+                ]:
+                    if list(td.glob(pattern)):
                         return True
+
+        # Check sibling test files
         for pattern in [f"test_{stem}", f"{stem}_test", f"{stem}.test", f"{stem}.spec"]:
             for ext in _IMPL_EXTENSIONS:
                 if (root / f"{pattern}{ext}").exists():
                     return True
-        root = root.parent
+
+        # Check monorepo patterns from this level
+        for mono_pattern in monorepo_patterns:
+            for td in root.glob(mono_pattern):
+                if td.is_dir():
+                    for f in td.glob(f"**/*{stem}*"):
+                        if is_test_file(f):
+                            return True
+
+        parent = root.parent
+        if parent == root:
+            break
+        root = parent
+
     return False
 
 
@@ -104,8 +127,8 @@ def main() -> int:
     if not has_test:
         suggested = suggest_test_path(file_path)
         context = (
-            f"[devflow TDD] {file_path.name}: implementacao sem teste correspondente.\n"
-            f"Sugestao: crie `{suggested}`\n"
+            f"[devflow TDD] {file_path.name}: implementation without corresponding test.\n"
+            f"Suggestion: create `{suggested}`\n"
             f"TDD: RED -> GREEN -> REFACTOR"
         )
         print(hook_context(context))

@@ -1,7 +1,6 @@
-"""
-SessionStart(compact) hook — restaura contexto apos compaction.
-Le estado salvo pelo pre_compact.py e injeta no contexto via stdout.
-Inclui project profile para continuidade imediata.
+"""SessionStart(compact) hook — restores context after compaction.
+Reads state saved by pre_compact.py and injects into context via stdout.
+Includes project profile for immediate continuity.
 Output protocol: plain text lines to stdout (SessionStart hooks use text, not JSON).
 """
 from __future__ import annotations

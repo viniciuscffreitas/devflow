@@ -3,45 +3,45 @@
 ## Trigger
 
 Use when:
-- Container não consegue alcançar um serviço rodando no HOST (mesmo servidor)
-- Query UDP/TCP para `vinicius.xyz` ou IP público falha com timeout dentro do container
-- `127.0.0.1` dentro do container aponta para o próprio container, não para o host
-- Serviços como CS:GO, bancos de dados, ou APIs locais ficam inacessíveis do container
+- Container cannot reach a service running on the HOST (same server)
+- UDP/TCP query to `vinicius.xyz` or public IP fails with timeout inside the container
+- `127.0.0.1` inside the container points to the container itself, not the host
+- Services like CS:GO, databases, or local APIs are unreachable from the container
 
-## O Problema
+## The Problem
 
-Dentro de um container Docker, existem 3 formas de tentar alcançar o host — e 2 delas falham:
+Inside a Docker container, there are 3 ways to try to reach the host — and 2 of them fail:
 
-| Host Referência | Funciona? | Motivo |
+| Host Reference | Works? | Reason |
 |---|---|---|
-| `127.0.0.1` | NÃO | Loopback do container, não do host |
-| `vinicius.xyz` / IP público | NÃO | NAT hairpin bloqueado pelo FORWARD DROP |
-| `172.18.0.1` (gateway da rede) | SIM | Rota direta para o host via bridge |
+| `127.0.0.1` | NO | Container's loopback, not the host's |
+| `vinicius.xyz` / public IP | NO | NAT hairpin blocked by FORWARD DROP |
+| `172.18.0.1` (network gateway) | YES | Direct route to host via bridge |
 
-O Docker cria uma rede bridge para cada `docker network`. O **gateway dessa rede** é o IP do host como visto de dentro dos containers naquela rede.
+Docker creates a bridge network for each `docker network`. The **gateway of that network** is the host's IP as seen from inside the containers on that network.
 
-## Como Descobrir o Gateway Correto
+## How to Find the Correct Gateway
 
 ```bash
-# Ver qual rede o container usa (olhar no docker-compose.yml)
-docker network inspect <nome-da-rede> | grep Gateway
-# Exemplo: npm_default → 172.18.0.1
-# Exemplo: bridge padrão → 172.17.0.1
+# Check which network the container uses (look in docker-compose.yml)
+docker network inspect <network-name> | grep Gateway
+# Example: npm_default → 172.18.0.1
+# Example: default bridge → 172.17.0.1
 ```
 
-## Configuração no docker-compose.yml
+## Configuration in docker-compose.yml
 
 ```yaml
 environment:
-  # ERRADO: CSGO_SERVER_HOST=vinicius.xyz
-  # ERRADO: CSGO_SERVER_HOST=127.0.0.1
-  - CSGO_SERVER_HOST=172.18.0.1  # gateway da rede npm_default
+  # WRONG: CSGO_SERVER_HOST=vinicius.xyz
+  # WRONG: CSGO_SERVER_HOST=127.0.0.1
+  - CSGO_SERVER_HOST=172.18.0.1  # gateway of npm_default network
 ```
 
-## Testar Conectividade de Dentro do Container
+## Testing Connectivity From Inside the Container
 
 ```bash
-# Teste UDP (ex: gamedig para CS:GO)
+# UDP test (e.g., gamedig for CS:GO)
 docker exec <container> node -e "
 const { GameDig } = require('gamedig');
 ['172.18.0.1','127.0.0.1','hostname.xyz'].forEach(host =>
@@ -50,7 +50,7 @@ const { GameDig } = require('gamedig');
     .catch(e => console.log('FAIL', host, e.message))
 );"
 
-# Teste TCP/UDP genérico
+# Generic TCP/UDP test
 docker exec <container> node -e "
 const dgram = require('dgram');
 const s = dgram.createSocket('udp4');
@@ -59,8 +59,8 @@ s.on('message', m => { console.log('got reply'); s.close(); });
 setTimeout(() => { console.log('no reply'); s.close(); }, 3000);"
 ```
 
-## Nota: Gateway pode mudar
+## Note: Gateway Can Change
 
-O gateway (ex: `172.18.0.1`) é fixo enquanto a rede Docker existir, mas pode mudar se a rede for recriada. Para produção onde a rede é estável (ex: `npm_default` do Nginx Proxy Manager), o IP é confiável.
+The gateway (e.g., `172.18.0.1`) is fixed as long as the Docker network exists, but it can change if the network is recreated. For production where the network is stable (e.g., `npm_default` from Nginx Proxy Manager), the IP is reliable.
 
-Alternativa mais robusta: `extra_hosts: ["host.docker.internal:host-gateway"]` no docker-compose, então usar `host.docker.internal` como hostname.
+More robust alternative: `extra_hosts: ["host.docker.internal:host-gateway"]` in docker-compose, then use `host.docker.internal` as hostname.
