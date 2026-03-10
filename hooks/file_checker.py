@@ -91,6 +91,9 @@ def _check_flutter(file_path: Path, project_root: Path) -> list[str]:
     issues = []
     if not shutil.which("dart"):
         return issues
+    # Format first (like gofmt -w and prettier --write)
+    run_command(["dart", "format", str(file_path)], cwd=project_root, timeout=15)
+    # Then analyze
     code, output = run_command(["dart", "analyze", str(file_path)], cwd=project_root, timeout=30)
     if code != 0 and output:
         lines = [l for l in output.splitlines() if "error" in l.lower() or "warning" in l.lower()]

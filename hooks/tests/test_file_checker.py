@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from file_checker import should_skip, get_length_message, _check_maven
+from file_checker import should_skip, get_length_message, _check_maven, _check_flutter
 import shutil
 
 
@@ -76,4 +76,34 @@ def test_maven_checker_no_mvn(tmp_path, monkeypatch):
     f = tmp_path / "App.java"
     f.write_text("public class App {}")
     issues = _check_maven(f, tmp_path)
+    assert issues == []
+
+
+def test_flutter_checker_calls_format_and_analyze(tmp_path, monkeypatch):
+    """dart format should be called before dart analyze for .dart files."""
+    monkeypatch.setattr(shutil, "which", lambda x: "/usr/bin/dart" if x == "dart" else None)
+    f = tmp_path / "widget.dart"
+    f.write_text("class  Widget {}")
+
+    call_order = []
+
+    def fake_run(cmd, **kwargs):
+        if "format" in cmd:
+            call_order.append("format")
+        elif "analyze" in cmd:
+            call_order.append("analyze")
+        return 0, ""
+
+    monkeypatch.setattr("file_checker.run_command", fake_run)
+    _check_flutter(f, tmp_path)
+
+    assert call_order == ["format", "analyze"], f"Expected format before analyze, got: {call_order}"
+
+
+def test_flutter_checker_no_dart_binary(tmp_path, monkeypatch):
+    """When dart is not installed, returns no issues."""
+    monkeypatch.setattr(shutil, "which", lambda x: None)
+    f = tmp_path / "widget.dart"
+    f.write_text("class Widget {}")
+    issues = _check_flutter(f, tmp_path)
     assert issues == []
