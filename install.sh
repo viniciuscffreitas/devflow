@@ -99,6 +99,14 @@ DEVFLOW_HOOKS = {
             ]
         },
     ],
+    "PreToolUse": [
+        {
+            "matcher": "Bash",
+            "hooks": [
+                {"type": "command", "command": f"python3 {devflow_dir}/hooks/pre_push_gate.py"},
+            ]
+        },
+    ],
 }
 
 # Load existing settings
@@ -143,7 +151,7 @@ if python3 -m pytest "$DEVFLOW_DIR/hooks/tests/" -v --tb=short 2>/dev/null; then
     echo "========================================="
     echo ""
     echo "What was installed:"
-    echo "  - 7 automatic hooks (quality, TDD, context, compaction, stop guard)"
+    echo "  - 8 automatic hooks (quality, TDD, context, compaction, stop guard, pre-push gate)"
     echo "  - 5 skills (spec-driven-dev, behavior-contract, wizard, orchestration, model-routing)"
     echo "  - 4 commands (/spec, /sync, /learn, /pause)"
     echo ""
