@@ -108,6 +108,13 @@ def get_edited_file(hook_data: dict) -> Optional[Path]:
     return None
 
 
+def get_bash_command(hook_data: dict) -> Optional[str]:
+    cmd = hook_data.get("tool_input", {}).get("command")
+    if cmd and cmd.strip():
+        return cmd
+    return None
+
+
 def get_session_id() -> str:
     return os.environ.get("CLAUDE_SESSION_ID", "default")
 

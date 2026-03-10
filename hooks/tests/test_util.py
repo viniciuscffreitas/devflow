@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from _util import (
     check_file_length,
     detect_toolchain,
+    get_bash_command,
     get_edited_file,
     hook_block,
     hook_context,
@@ -163,3 +164,22 @@ def test_hook_deny_json():
     result = json.loads(hook_deny("denied"))
     assert result["permissionDecision"] == "deny"
     assert result["reason"] == "denied"
+
+
+# --- get_bash_command ---
+
+def test_get_bash_command_present():
+    result = get_bash_command({"tool_input": {"command": "git push origin main"}})
+    assert result == "git push origin main"
+
+
+def test_get_bash_command_missing():
+    assert get_bash_command({}) is None
+
+
+def test_get_bash_command_no_tool_input():
+    assert get_bash_command({"other": "data"}) is None
+
+
+def test_get_bash_command_empty():
+    assert get_bash_command({"tool_input": {"command": ""}}) is None
