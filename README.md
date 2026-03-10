@@ -28,12 +28,13 @@ These fire on every relevant Claude Code event. You never invoke them — they j
 
 | Hook | Event | Matcher | What it does |
 |------|-------|---------|-------------|
+| **discovery_scan** | SessionStart | `*` | Detects project structure on session start: toolchain (Node.js, Flutter, Go, Rust, Maven), issue tracker (Linear, GitHub Issues, Jira, TODO.md), design system, test framework. Manages learned skill symlinks. Outputs `[devflow:project-profile]` to context |
 | **file_checker** | PostToolUse | `Write\|Edit\|MultiEdit` | Detects your project's toolchain (Node.js, Flutter, Go, Rust, Maven) and runs the appropriate formatter + linter. Warns when files exceed 400 lines, alerts at 600. Skips test files, config files, and generated code (`.g.dart`, `.freezed.dart`, `.pb.go`, etc.) |
 | **tdd_enforcer** | PostToolUse | `Write\|Edit\|MultiEdit` | Detects when you write implementation code without a corresponding test. Suggests the exact test file path using language-aware directory mirroring (`src/user.py` → `tests/test_user.py`, `lib/widget.dart` → `test/widget_test.dart`). Non-blocking — advises, never blocks |
 | **context_monitor** | PostToolUse | `Read\|Write\|Edit\|MultiEdit\|Bash\|Glob\|Grep` | Tracks context window usage against the compaction threshold (~167k tokens). Warns at 80% ("consider using /learn"), cautions at 90% ("finish current task, compaction imminent") |
 | **pre_compact** | PreCompact | `*` | Saves session state before auto-compaction: active spec, working directory, session ID. Writes to `~/.claude/devflow/state/<session>/pre-compact.json` |
 | **post_compact_restore** | SessionStart | `compact` | Reads saved state after compaction and injects it into context. You come back knowing exactly what you were working on, what spec was active, and where you were |
-| **spec_stop_guard** | Stop | `*` | Blocks session exit if a spec is actively in progress (status: IMPLEMENTING, PENDING, or in_progress). Suggests `/pause` to explicitly pause. Fail-closed: if state file is corrupt, assumes spec is active (safe default) |
+| **spec_stop_guard** | Stop | `*` | Blocks session exit if a spec is actively in progress (status: IMPLEMENTING, PENDING, or in_progress). Suggests `/pause` to explicitly pause. Includes 24-hour expiry for stale specs. Corrupt files older than 24h are treated as abandoned (fail-safe). |
 
 ### Commands (you type these in the prompt)
 
@@ -48,7 +49,7 @@ Plan → Approve → TDD (RED→GREEN→REFACTOR) → Verify → Done
 
 **Bugfix flow:**
 ```
-Behavior Contract (MUDA/NÃO MUDA/PROVA) → Approve → TDD → Verify → Done
+Behavior Contract (CHANGES/MUST NOT CHANGE/PROOF) → Approve → TDD → Verify → Done
 ```
 
 **Examples:**
@@ -121,25 +122,25 @@ The core workflow orchestrator. Defines the complete flow for features and bugfi
 
 Formal contract for bugfixes with three sections:
 
-- **MUDA** — what WILL change (specific, testable behaviors)
-- **NÃO MUDA** — what MUST NOT change (all callers/dependents of modified component)
-- **PROVA** — tests that prove both MUDA and NÃO MUDA
+- **CHANGES** — what WILL change (specific, testable behaviors)
+- **MUST NOT CHANGE** — what MUST NOT change (all callers/dependents of modified component)
+- **PROOF** — tests that prove both CHANGES and MUST NOT CHANGE
 
-The contract must be approved by the user before implementation begins. If any NÃO MUDA item breaks during implementation: stop, revise contract, re-present.
+The contract must be approved by the user before implementation begins. If any MUST NOT CHANGE item breaks during implementation: stop, revise contract, re-present.
 
 **Example:**
 ```markdown
 ## Behavior Contract: /api/user/:id returns 500 instead of 404
 
-### MUDA
+### CHANGES
 - [ ] GET /api/user/999 → HTTP 404 with {"error": "not found"}
 
-### NÃO MUDA
+### MUST NOT CHANGE
 - [ ] GET /api/user/1 (existing) → HTTP 200 with data
 - [ ] POST /api/user → continues creating users
 - [ ] JWT auth → continues being validated
 
-### PROVA
+### PROOF
 - [ ] test_user_not_found_returns_404
 - [ ] test_existing_user_returns_200
 ```
@@ -194,7 +195,7 @@ file_checker auto-detects your project and runs the right tools:
 | **Flutter/Dart** | `pubspec.yaml` | — | `dart analyze` |
 | **Go** | `go.mod` | `gofmt -w` | `go vet` |
 | **Rust** | `Cargo.toml` | — | `cargo check` |
-| **Maven/Java** | `pom.xml` or `mvnw` | — | — |
+| **Maven/Java** | `pom.xml` or `mvnw` | — | `mvn compile` |
 
 If a tool isn't installed, the hook silently skips it. No errors, no noise.
 
@@ -242,93 +243,35 @@ These are never checked by file_checker or flagged by tdd_enforcer:
 git clone https://github.com/viniciuscffreitas/devflow.git ~/.claude/devflow
 ```
 
-2. **Copy skills:**
+2. **Run the installer:**
 ```bash
-cp -r ~/.claude/devflow/skills/devflow-* ~/.claude/skills/
+chmod +x ~/.claude/devflow/install.sh && ~/.claude/devflow/install.sh
 ```
 
-> Note: Skills are in the repo under `skills/` but must be symlinked or copied to `~/.claude/skills/` to be discovered by Claude Code.
+This handles everything automatically: copies skills and commands to the right directories, registers hooks in `~/.claude/settings.json`, and merges with your existing configuration.
 
-3. **Copy commands:**
+3. **Optional — copy CLAUDE.md:**
 ```bash
-cp ~/.claude/devflow/commands/{spec,sync,learn,pause}.md ~/.claude/commands/
+cp ~/.claude/devflow/CLAUDE.md ~/.claude/CLAUDE.md
 ```
 
-4. **Register hooks in `~/.claude/settings.json`:**
+> If you already have a `~/.claude/CLAUDE.md`, merge the devflow sections manually instead of overwriting.
 
-Add these entries to the `"hooks"` section:
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/devflow/hooks/file_checker.py"
-          },
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/devflow/hooks/tdd_enforcer.py"
-          }
-        ]
-      },
-      {
-        "matcher": "Read|Write|Edit|MultiEdit|Bash|Glob|Grep",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/devflow/hooks/context_monitor.py"
-          }
-        ]
-      }
-    ],
-    "PreCompact": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/devflow/hooks/pre_compact.py"
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/devflow/hooks/post_compact_restore.py"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/devflow/hooks/spec_stop_guard.py"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-> **Important:** Use absolute paths (expand `~` to your home directory). Merge with existing hooks — don't overwrite them.
-
-5. **Verify installation:**
+4. **Verify installation:**
 ```bash
-# All 75 tests should pass
+# All 81 tests should pass
 cd ~/.claude/devflow && python3 -m pytest hooks/tests/ -v
 ```
+
+### Uninstalling
+
+To remove devflow cleanly:
+
+```bash
+chmod +x ~/.claude/devflow/uninstall.sh && ~/.claude/devflow/uninstall.sh
+```
+
+This removes skills, commands, and hook registrations from `~/.claude/settings.json` without affecting other plugins.
 
 ---
 
@@ -338,7 +281,7 @@ devflow is designed to coexist with other Claude Code plugins:
 
 | Plugin | Conflict? | Notes |
 |--------|-----------|-------|
-| **superpowers** | Partial overlap | superpowers handles brainstorming, worktrees, finishing branches. devflow adds automatic hooks, behavior contracts, wizard, model routing. **Recommended: keep both** |
+| **superpowers** | Partial overlap | superpowers handles brainstorming, worktrees, finishing branches. devflow adds automatic hooks, behavior contracts, wizard, model routing. They complement each other well. **Recommended: keep both** |
 | **pr-review-toolkit** | None | Complementary — devflow doesn't do PR review |
 | **frontend-design** | None | Complementary — devflow doesn't do UI |
 | **swift-lsp** | None | Complementary — devflow doesn't do LSP |
@@ -380,6 +323,10 @@ devflow is designed to coexist with other Claude Code plugins:
 │   │       ├── test_spec_stop_guard.py # 7 tests
 │   │       ├── test_context_monitor.py # 7 tests
 │   │       └── test_compact_hooks.py  # 9 tests (pre + post)
+│   ├── skills/                    # Source skills (copied by install.sh)
+│   ├── commands/                  # Source commands (copied by install.sh)
+│   ├── install.sh                 # Automated installer
+│   ├── uninstall.sh               # Automated uninstaller
 │   └── state/
 │       └── <session-id>/
 │           ├── active-spec.json   # Current spec status
@@ -409,7 +356,7 @@ Hooks receive input via stdin (JSON with tool_input, context_tokens_used, etc.).
 - **Hooks must never crash** — a crashing hook disrupts Claude Code's workflow
 - **Silent exit when nothing to report** — no noise, no unnecessary output
 - **Log errors to stderr** — provides diagnostic trail without breaking stdout protocol
-- **Fail-closed for safety hooks** — spec_stop_guard assumes spec is active if state is corrupt (safe default)
+- **Fail-safe for safety hooks** — spec_stop_guard includes a 24-hour expiry; corrupt state files older than 24h are treated as abandoned rather than blocking indefinitely
 - **Fail-open for quality hooks** — file_checker and tdd_enforcer skip gracefully on errors (no false positives)
 
 ---
@@ -418,7 +365,12 @@ Hooks receive input via stdin (JSON with tool_input, context_tokens_used, etc.).
 
 ### Adjusting thresholds
 
-Edit `~/.claude/devflow/hooks/_util.py`:
+Thresholds can be configured via `devflow-config.json` at two levels:
+
+- **Global:** `~/.claude/devflow/devflow-config.json`
+- **Per-project:** `.devflow-config.json` in the project root (overrides global)
+
+Alternatively, edit `~/.claude/devflow/hooks/_util.py` directly:
 
 ```python
 FILE_LINES_WARN = 400        # Warning at this many lines
@@ -461,7 +413,7 @@ Remove or comment out the hook entry in `~/.claude/settings.json`. The other hoo
 ```bash
 cd ~/.claude/devflow
 
-# Run all 75 tests
+# Run all 81 tests
 python3 -m pytest hooks/tests/ -v
 
 # Run specific test file
@@ -485,7 +437,7 @@ devflow synthesizes patterns from two sources into a language-agnostic system:
 
 ### From [pilot-shell](https://github.com/maxritter/pilot-shell) (professional dev environment)
 - **Spec-driven development** — structured Plan→TDD→Verify flow
-- **Behavior contracts** — MUDA/NÃO MUDA/PROVA for bugfixes
+- **Behavior contracts** — CHANGES/MUST NOT CHANGE/PROOF for bugfixes
 - **Automatic quality hooks** — lint, format, file length on every edit
 - **TDD enforcement** — nudge toward test-first development
 - **Context preservation** — save/restore state across compaction
@@ -498,7 +450,7 @@ devflow synthesizes patterns from two sources into a language-agnostic system:
 - **Language-agnostic toolchain detection** — works across Node.js, Flutter, Go, Rust, Maven without configuration
 - **Smart test path suggestion** — language-aware directory mirroring with correct naming conventions
 - **Generated file detection** — skips codegen artifacts across ecosystems
-- **Fail-closed safety** — stop guard assumes worst case on corrupt state
+- **Fail-safe with expiry** — stop guard uses 24-hour expiry for stale specs instead of blocking indefinitely on corrupt state
 - **Stderr error logging** — diagnostic trail without breaking hook protocol
 
 ---
