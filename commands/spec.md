@@ -1,29 +1,12 @@
 # /spec
 
-Starts the spec-driven development workflow for a feature or bugfix.
+Start spec-driven development. The text after `/spec` is the task description.
 
-## Usage
+If the user provided a description after `/spec`, use it immediately — do NOT ask for clarification or re-request it in quotes. Just proceed with the spec-driven-dev workflow using whatever text was provided.
 
-```
-/spec "task description"
-```
+If no description was provided, ask: "What do you want to build or fix?" — accept the next message as the description, with or without quotes.
 
-## What it does
+Invoke `devflow:spec-driven-dev` with the description.
+Auto-detects: feature (new functionality) vs bugfix (existing broken behavior).
 
-Invokes `devflow:spec-driven-dev` with the provided description.
-Auto-detects: feature (new functionality) vs bugfix (fix for existing broken behavior).
-
-**Feature:** Plan -> Approve -> TDD -> Verify -> Done
-**Bugfix:** Behavior Contract -> Approve -> TDD -> Verify -> Done
-
-## Examples
-
-```
-/spec "add pagination to user list endpoint"
-/spec "fix: profile photo not loading on iOS"
-/spec "refactor auth middleware to support OAuth"
-```
-
-## Skill invoked
-
-`devflow:spec-driven-dev`
+Examples: `/spec add pagination to users`, `/spec fix: photos not loading on iOS`
